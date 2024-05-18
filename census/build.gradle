@@ -21,6 +21,7 @@ dependencies {
             project(":grpc-context"), // Override opencensus dependency with our newer version
             libraries.opencensus.api,
             libraries.opencensus.contrib.grpc.metrics
+    implementation 'io.opentelemetry:opentelemetry-api:1.38.0'
 
     testImplementation testFixtures(project(':grpc-api')),
             testFixtures(project(':grpc-core')),

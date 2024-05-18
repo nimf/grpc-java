@@ -27,6 +27,9 @@ dependencies {
             libraries.opencensus.contrib.grpc.metrics,
             libraries.google.auth.oauth2Http,
             libraries.guava.jre // Fix checkUpperBoundDeps using -android
+    implementation 'io.opentelemetry:opentelemetry-sdk-extension-autoconfigure:1.38.0'
+    implementation 'io.opentelemetry:opentelemetry-exporter-logging:1.38.0'
+    implementation 'io.opentelemetry:opentelemetry-api:1.38.0'
     api project(':grpc-api'),
             project(':grpc-stub'),
             project(':grpc-protobuf'),
@@ -44,6 +47,7 @@ dependencies {
             libraries.netty.tcnative.classes,
             project(':grpc-grpclb'),
             project(':grpc-rls')
+    runtimeOnly 'io.opentelemetry:opentelemetry-opencensus-shim:1.38.0-alpha'
     testImplementation testFixtures(project(':grpc-api')),
             testFixtures(project(':grpc-core')),
             project(':grpc-inprocess'),

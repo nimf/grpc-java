@@ -64,6 +64,7 @@ import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import io.grpc.auth.MoreCallCredentials;
 import io.grpc.census.InternalCensusStatsAccessor;
+import io.grpc.census.InternalCensusTracingAccessor;
 import io.grpc.census.internal.DeprecatedCensusConstants;
 import io.grpc.internal.GrpcUtil;
 import io.grpc.internal.testing.StatsTestUtils;
@@ -93,6 +94,7 @@ import io.grpc.testing.integration.Messages.StreamingInputCallResponse;
 import io.grpc.testing.integration.Messages.StreamingOutputCallRequest;
 import io.grpc.testing.integration.Messages.StreamingOutputCallResponse;
 import io.grpc.testing.integration.Messages.TestOrcaReport;
+import io.opencensus.common.Scope;
 import io.opencensus.contrib.grpc.metrics.RpcMeasureConstants;
 import io.opencensus.stats.Measure;
 import io.opencensus.stats.Measure.MeasureDouble;
@@ -101,6 +103,7 @@ import io.opencensus.tags.TagKey;
 import io.opencensus.tags.TagValue;
 import io.opencensus.trace.Span;
 import io.opencensus.trace.SpanContext;
+import io.opencensus.trace.Tracer;
 import io.opencensus.trace.Tracing;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -342,6 +345,7 @@ public abstract class AbstractInteropTest {
    * Must be called by the subclass setup method if overridden.
    */
   @Before
+  @SuppressWarnings("CheckReturnValue")
   public void setUp() {
     ServerBuilder<?> serverBuilder = getServerBuilder();
     configBuilder(serverBuilder);
@@ -356,7 +360,12 @@ public abstract class AbstractInteropTest {
       blockingStub = TestServiceGrpc.newBlockingStub(channel);
       asyncStub = TestServiceGrpc.newStub(channel);
     }
-
+    blockingStub.withInterceptors(InternalCensusTracingAccessor.getClientInterceptor());
+    Tracer tracer = Tracing.getTracer();
+    Span applicationSpan = tracer.spanBuilder("application span is parent span").startSpan();
+    try (Scope scope = tracer.withSpan(applicationSpan)) {
+      applicationSpan.addAnnotation("anstract interop test started");
+    }
     ClientInterceptor[] additionalInterceptors = getAdditionalInterceptors();
     if (additionalInterceptors != null) {
       blockingStub = blockingStub.withInterceptors(additionalInterceptors);
@@ -440,8 +449,19 @@ public abstract class AbstractInteropTest {
   }
 
   @Test
+  @SuppressWarnings({"deprecation", "CheckReturnValue"})
   public void emptyUnary() throws Exception {
+    Tracer tracer = Tracing.getTracer();
+    Span applicationSpan = tracer.spanBuilder("application span is parent span").startSpan();
+    io.opencensus.trace.unsafe.ContextUtils.withValue(Context.current(), applicationSpan).attach();
+    logger.log(Level.INFO, "parent span " + applicationSpan.getContext());
     assertEquals(EMPTY, blockingStub.emptyCall(EMPTY));
+
+//    try (Scope scope = tracer.withSpan(applicationSpan)) {
+//      applicationSpan.addAnnotation("anstract interop test started");
+//      logger.log(Level.INFO, "parent span " + applicationSpan.getContext());
+//      assertEquals(EMPTY, blockingStub.emptyCall(EMPTY));
+//    }
   }
 
   @Test

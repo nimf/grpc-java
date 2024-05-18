@@ -19,6 +19,7 @@ package io.grpc.testing.integration;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Queues;
 import com.google.protobuf.ByteString;
+import io.grpc.Context;
 import io.grpc.ForwardingServerCall.SimpleForwardingServerCall;
 import io.grpc.Metadata;
 import io.grpc.ServerCall;
@@ -41,6 +42,8 @@ import io.grpc.testing.integration.Messages.StreamingOutputCallRequest;
 import io.grpc.testing.integration.Messages.StreamingOutputCallResponse;
 import io.grpc.testing.integration.Messages.TestOrcaReport;
 import io.grpc.testing.integration.TestServiceGrpc.AsyncService;
+import io.opencensus.trace.Tracing;
+import io.opencensus.trace.unsafe.ContextHandleUtils;
 import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -54,13 +57,17 @@ import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import javax.annotation.concurrent.GuardedBy;
+import io.opentelemetry.api.OpenTelemetry;
 
 /**
  * Implementation of the business logic for the TestService. Uses an executor to schedule chunks
  * sent in response streams.
  */
 public class TestServiceImpl implements io.grpc.BindableService, AsyncService {
+  private static final Logger log = Logger.getLogger("TestServiceImpl");
   private final Random random = new Random();
 
   private final ScheduledExecutorService executor;
@@ -87,8 +94,15 @@ public class TestServiceImpl implements io.grpc.BindableService, AsyncService {
   }
 
   @Override
+  @SuppressWarnings("deprecation")
   public void emptyCall(EmptyProtos.Empty request,
       StreamObserver<EmptyProtos.Empty> responseObserver) {
+    log.log(Level.INFO, "SpanContext from OC: (hint:empty) {0} ",
+        new Object[]{Tracing.getTracer().getCurrentSpan().getContext()});
+    log.log(Level.INFO, "SpanContext from Otel: (hint:empty) {0} ",
+        new Object[]{io.opentelemetry.api.trace.Span.fromContext(io.opentelemetry.context.Context.current()).getSpanContext()});
+    log.log(Level.INFO, "SpanContext from gRPC: (hint:the same from context filter) {0}",
+        new Object[]{io.opencensus.trace.unsafe.ContextUtils.getValue(Context.current()).getContext()});
     responseObserver.onNext(EmptyProtos.Empty.getDefaultInstance());
     responseObserver.onCompleted();
   }

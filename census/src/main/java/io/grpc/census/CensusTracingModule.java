@@ -43,6 +43,7 @@ import io.opencensus.trace.SpanContext;
 import io.opencensus.trace.Status;
 import io.opencensus.trace.Tracer;
 import io.opencensus.trace.propagation.BinaryFormat;
+import io.opencensus.trace.unsafe.ContextHandleUtils;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -416,6 +417,11 @@ final class CensusTracingModule {
       // Access directly the unsafe trace API to create the new Context. This is a safe usage
       // because gRPC always creates a new Context for each of the server calls and does not
       // inherit from the parent Context.
+      logger.log(Level.INFO, "filtering context in server tracer: {0}", new Object[]{span.getContext()});
+      //ContextHandleUtils.withValue(ContextHandleUtils.currentContext(), span).attach();
+      //logger.log(Level.INFO, "filtering context getting from otel spancontext {0}",
+      //    new Object[]{io.opentelemetry.api.trace.Span.fromContext(io.opentelemetry.context.Context.current()).getSpanContext()});
+      //ContextHandleUtils.tryExtractGrpcContext(ContextHandleUtils.withValue(ContextHandleUtils.currentContext(), span));
       return io.opencensus.trace.unsafe.ContextUtils.withValue(context, span);
     }
 
@@ -470,6 +476,7 @@ final class CensusTracingModule {
       // as Tracer.getCurrentSpan() except when no value available when the return value is null
       // for the direct access and BlankSpan when Tracer API is used.
       Span parentSpan = io.opencensus.trace.unsafe.ContextUtils.getValue(Context.current());
+      logger.log(Level.INFO, "tracing client interceptor, getting parent span: {0}", new Object[]{parentSpan.getContext()});
       Span clientSpan = censusTracer
           .spanBuilderWithExplicitParent(
               generateTraceSpanName(false, method.getFullMethodName()),

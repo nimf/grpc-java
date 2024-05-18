@@ -26,6 +26,7 @@ import io.grpc.ServerCredentials;
 import io.grpc.ServerInterceptors;
 import io.grpc.TlsServerCredentials;
 import io.grpc.alts.AltsServerCredentials;
+import io.grpc.census.InternalCensusTracingAccessor;
 import io.grpc.services.MetricRecorder;
 import io.grpc.testing.TlsTesting;
 import io.grpc.xds.orca.OrcaMetricReportingServerInterceptor;
@@ -163,6 +164,7 @@ public class TestServiceServer {
                 new TestServiceImpl(executor, metricRecorder), TestServiceImpl.interceptors()))
         .addService(orcaOobService)
         .intercept(OrcaMetricReportingServerInterceptor.create(metricRecorder))
+        .addStreamTracerFactory(InternalCensusTracingAccessor.getServerStreamTracerFactory())
         .build()
         .start();
   }
