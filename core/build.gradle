@@ -25,7 +25,9 @@ dependencies {
             libraries.animalsniffer.annotations,
             libraries.errorprone.annotations,
             libraries.guava,
-            libraries.perfmark.api
+            libraries.perfmark.api,
+            libraries.opencensus.api,
+            libraries.opentelemetry.api
     testFixturesApi libraries.junit
     testFixturesImplementation libraries.guava,
             libraries.mockito.core,

@@ -55,6 +55,8 @@ import io.grpc.ServerMethodDefinition;
 import io.grpc.ServerServiceDefinition;
 import io.grpc.ServerTransportFilter;
 import io.grpc.Status;
+import io.opencensus.trace.Span;
+import io.opencensus.trace.unsafe.ContextUtils;
 import io.perfmark.Link;
 import io.perfmark.PerfMark;
 import io.perfmark.Tag;
@@ -470,16 +472,6 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
 
     private void streamCreatedInternal(
         final ServerStream stream, final String methodName, final Metadata headers, final Tag tag) {
-      final Executor wrappedExecutor;
-      // This is a performance optimization that avoids the synchronization and queuing overhead
-      // that comes with SerializingExecutor.
-      if (executorSupplier != null || executor != directExecutor()) {
-        wrappedExecutor = new SerializingExecutor(executor);
-      } else {
-        wrappedExecutor = new SerializeReentrantCallsDirectExecutor();
-        stream.optimizeForDirectExecutor();
-      }
-
       if (headers.containsKey(MESSAGE_ENCODING_KEY)) {
         String encoding = headers.get(MESSAGE_ENCODING_KEY);
         Decompressor decompressor = decompressorRegistry.lookupDecompressor(encoding);
@@ -498,6 +490,41 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
           stream.statsTraceContext(), "statsTraceCtx not present from stream");
 
       final Context.CancellableContext context = createContext(headers, statsTraceCtx);
+
+      // Handle to OTel context.
+      io.opentelemetry.context.Context otContext = null;
+      // Lookup OC span in gRPC context.
+      Span ocSpan = ContextUtils.getValue(context);
+
+      if (ocSpan instanceof io.opentelemetry.api.trace.Span) {
+        io.opentelemetry.api.trace.Span span = (io.opentelemetry.api.trace.Span) ocSpan;
+
+        if (span != null && span != io.opentelemetry.api.trace.Span.getInvalid()) {
+          // If we have a valid OTel span, create a new OTel context with the span for the RPC.
+          otContext = io.opentelemetry.context.Context.root().with(span);
+        }
+      }
+
+      final Executor wrappedExecutor;
+      // This is a performance optimization that avoids the synchronization and queuing overhead
+      // that comes with SerializingExecutor.
+      if (executorSupplier != null || executor != directExecutor()) {
+        if (otContext != null) {
+          // Wrap executor in OTel context so that OTel context is available for this RPC.
+          // May need changes in SerializingExecutor to survive setExecutor call.
+          wrappedExecutor = new SerializingExecutor(otContext.wrap(executor));
+        } else {
+          wrappedExecutor = new SerializingExecutor(executor);
+        }
+      } else {
+        if (otContext != null) {
+          // Wrap executor in OTel context so that OTel context is available for this RPC.
+          wrappedExecutor = otContext.wrap(new SerializeReentrantCallsDirectExecutor());
+        } else {
+          wrappedExecutor = new SerializeReentrantCallsDirectExecutor();
+        }
+        stream.optimizeForDirectExecutor();
+      }
 
       final Link link = PerfMark.linkOut();
 

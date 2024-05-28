@@ -36,6 +36,7 @@ import io.grpc.ServerStreamTracer;
 import io.grpc.StreamTracer;
 import io.opencensus.trace.AttributeValue;
 import io.opencensus.trace.BlankSpan;
+import io.opencensus.trace.ContextHandle;
 import io.opencensus.trace.EndSpanOptions;
 import io.opencensus.trace.MessageEvent;
 import io.opencensus.trace.Span;
@@ -44,6 +45,7 @@ import io.opencensus.trace.Status;
 import io.opencensus.trace.Tracer;
 import io.opencensus.trace.propagation.BinaryFormat;
 import io.opencensus.trace.unsafe.ContextHandleUtils;
+import io.opencensus.trace.unsafe.ContextUtils;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -411,18 +413,43 @@ final class CensusTracingModule {
      with io.grpc.Context as described in {@link io.opencensus.trace.unsafeContextUtils} to remove
      SuppressWarnings annotation.
     */
-    @SuppressWarnings("deprecation")
     @Override
     public Context filterContext(Context context) {
       // Access directly the unsafe trace API to create the new Context. This is a safe usage
       // because gRPC always creates a new Context for each of the server calls and does not
       // inherit from the parent Context.
       logger.log(Level.INFO, "filtering context in server tracer: {0}", new Object[]{span.getContext()});
-      //ContextHandleUtils.withValue(ContextHandleUtils.currentContext(), span).attach();
+
+      ContextHandle ch = null;
+      try {
+        // Add the span to the OC/gRPC context.
+         ch = context.call(
+            () -> ContextHandleUtils.withValue(ContextHandleUtils.currentContext(), span));
+      } catch (Exception e) {
+        // This is "best effort". Logging for debugging only.
+        logger.log(Level.INFO, "EXCEPTION {0}", e);
+      }
+
+      if (ch != null) {
+        // If OC context succeeded, fetch gRPC context with the span from OC.
+        Context ctx = ContextHandleUtils.tryExtractGrpcContext(ch);
+        if (ctx != null) {
+          logger.log(Level.INFO, "RETURNING CHANGED CONTEXT");
+          return ctx;
+        }
+        logger.log(Level.INFO, "CTX IS NULL");
+      }
+
+      logger.log(Level.INFO, "CH IS NULL");
+
+      // Fallback to ContextUtils for now. We end up here if opencensus-shim is used.
+      // Return gRPC context with span.
+      return ContextUtils.withValue(context, span);
+
       //logger.log(Level.INFO, "filtering context getting from otel spancontext {0}",
       //    new Object[]{io.opentelemetry.api.trace.Span.fromContext(io.opentelemetry.context.Context.current()).getSpanContext()});
       //ContextHandleUtils.tryExtractGrpcContext(ContextHandleUtils.withValue(ContextHandleUtils.currentContext(), span));
-      return io.opencensus.trace.unsafe.ContextUtils.withValue(context, span);
+      // return io.opencensus.trace.unsafe.ContextUtils.withValue(context, span);
     }
 
     @Override
